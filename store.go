@@ -1,0 +1,79 @@
+package kleio
+
+import "context"
+
+// StoreMode indicates whether the store operates against a local SQLite
+// database or the Kleio Cloud API.
+type StoreMode int
+
+const (
+	StoreModeLocal StoreMode = iota
+	StoreModeCloud
+)
+
+func (m StoreMode) String() string {
+	switch m {
+	case StoreModeLocal:
+		return "local"
+	case StoreModeCloud:
+		return "cloud"
+	default:
+		return "unknown"
+	}
+}
+
+// SearchOpts configures a Store.Search call.
+type SearchOpts struct {
+	RepoName   string `json:"repo_name,omitempty"`
+	SignalType string `json:"signal_type,omitempty"`
+	Since      string `json:"since,omitempty"`
+	FilePath   string `json:"file_path,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
+}
+
+// SearchResult is a single item returned by Store.Search, ranked by relevance.
+type SearchResult struct {
+	ID         string  `json:"id"`
+	Kind       string  `json:"kind"` // "event", "commit", "backlog_item", "identifier"
+	Content    string  `json:"content"`
+	Score      float64 `json:"score"`
+	CreatedAt  string  `json:"created_at,omitempty"`
+	RepoName   string  `json:"repo_name,omitempty"`
+	FilePath   string  `json:"file_path,omitempty"`
+	SignalType string  `json:"signal_type,omitempty"`
+}
+
+// Store is the core storage contract for Kleio. Both the local SQLite backend
+// (localdb.Store) and the cloud HTTP backend (apistore.Store) implement this
+// interface, ensuring commands and the analysis engine are written once.
+type Store interface {
+	// Events (captures, checkpoints, decisions)
+	CreateEvent(ctx context.Context, event *Event) error
+	ListEvents(ctx context.Context, filter EventFilter) ([]Event, error)
+	GetEvent(ctx context.Context, id string) (*Event, error)
+
+	// Backlog
+	CreateBacklogItem(ctx context.Context, item *BacklogItem) error
+	ListBacklogItems(ctx context.Context, filter BacklogFilter) ([]BacklogItem, error)
+	GetBacklogItem(ctx context.Context, id string) (*BacklogItem, error)
+	UpdateBacklogItem(ctx context.Context, id string, update *BacklogItem) error
+
+	// Git index
+	IndexCommits(ctx context.Context, repoPath string, commits []Commit) error
+	QueryCommits(ctx context.Context, filter CommitFilter) ([]Commit, error)
+
+	// Links
+	CreateLink(ctx context.Context, link *Link) error
+	QueryLinks(ctx context.Context, filter LinkFilter) ([]Link, error)
+
+	// File history
+	TrackFileChange(ctx context.Context, change *FileChange) error
+	FileHistory(ctx context.Context, path string) ([]FileChange, error)
+
+	// Search (text-based for local, semantic for cloud)
+	Search(ctx context.Context, query string, opts SearchOpts) ([]SearchResult, error)
+
+	// Metadata
+	Mode() StoreMode
+	Close() error
+}
