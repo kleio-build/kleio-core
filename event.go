@@ -21,11 +21,12 @@ type Event struct {
 
 // EventFilter constrains which events are returned by Store.ListEvents.
 type EventFilter struct {
-	SignalType   string `json:"signal_type,omitempty"`
-	SourceType   string `json:"source_type,omitempty"`
-	RepoName     string `json:"repo_name,omitempty"`
-	AuthorType   string `json:"author_type,omitempty"`
-	CreatedAfter string `json:"created_after,omitempty"`
+	SignalType    string `json:"signal_type,omitempty"`
+	SourceType    string `json:"source_type,omitempty"`
+	RepoName      string `json:"repo_name,omitempty"`
+	AuthorType    string `json:"author_type,omitempty"`
+	ContentSearch string `json:"content_search,omitempty"`
+	CreatedAfter  string `json:"created_after,omitempty"`
 	CreatedBefore string `json:"created_before,omitempty"`
-	Limit        int    `json:"limit,omitempty"`
+	Limit         int    `json:"limit,omitempty"`
 }
