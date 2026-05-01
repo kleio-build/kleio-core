@@ -13,11 +13,16 @@ import (
 // hides whether persistence happens against local SQLite or the cloud
 // API. Concrete implementations of each stage live outside this package
 // (e.g. kleio-cli/internal/ingest, /correlate, /synthesize).
+// PostIngestFunc runs after all ingesters complete but before
+// correlation. Used for entity normalization and persistence.
+type PostIngestFunc func(ctx context.Context, signals []RawSignal) error
+
 type Pipeline struct {
-	Ingesters    []Ingester
-	Correlators  []Correlator
-	Synthesizers []Synthesizer
-	Store        Store
+	Ingesters      []Ingester
+	Correlators    []Correlator
+	Synthesizers   []Synthesizer
+	Store          Store
+	PostIngestHooks []PostIngestFunc
 }
 
 // Run executes one full pipeline pass and returns a PipelineReport
@@ -48,6 +53,12 @@ func (p *Pipeline) Run(ctx context.Context, scope IngestScope) (*PipelineReport,
 		}
 		report.SignalsByIngester[ing.Name()] = len(signals)
 		allSignals = append(allSignals, signals...)
+	}
+
+	for _, hook := range p.PostIngestHooks {
+		if err := hook(ctx, allSignals); err != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("post-ingest hook: %v", err))
+		}
 	}
 
 	var allClusters []Cluster
