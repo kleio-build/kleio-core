@@ -21,6 +21,7 @@ type Commit struct {
 // CommitFilter constrains which commits are returned by Store.QueryCommits.
 type CommitFilter struct {
 	RepoPath      string `json:"repo_path,omitempty"`
+	RepoName      string `json:"repo_name,omitempty"`
 	Branch        string `json:"branch,omitempty"`
 	AuthorName    string `json:"author_name,omitempty"`
 	AuthorEmail   string `json:"author_email,omitempty"`

@@ -28,6 +28,20 @@ const (
 	LinkTypeReferences     = "references"
 	LinkTypeSquashContains = "squash_contains"
 	LinkTypeTouches        = "touches"
+
+	// Pipeline link types: introduced by the Ingest -> Correlate ->
+	// Synthesize pipeline (see kleio.Cluster). LinkTypeClusterAnchor
+	// connects every member of a cluster to its canonical anchor signal;
+	// LinkTypeCorrelatedWith records weaker pairwise correlations
+	// emitted by individual correlators (TimeWindow, IDReference, etc).
+	// LinkTypeDerivedFrom flows from a synthesized Event back to its
+	// source RawSignal IDs for round-trip provenance.
+	// LinkTypeParentSignal is reserved for hierarchical Plan ingestion
+	// (umbrella plan signal -> child todo/decision/risk signals).
+	LinkTypeClusterAnchor   = "cluster_anchor"
+	LinkTypeCorrelatedWith  = "correlated_with"
+	LinkTypeDerivedFrom     = "derived_from"
+	LinkTypeParentSignal    = "parent_signal"
 )
 
 // Backlog item statuses.

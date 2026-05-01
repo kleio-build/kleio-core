@@ -73,6 +73,14 @@ type Store interface {
 	// Search (text-based for local, semantic for cloud)
 	Search(ctx context.Context, query string, opts SearchOpts) ([]SearchResult, error)
 
+	// Entities
+	CreateEntity(ctx context.Context, entity *Entity) error
+	FindEntity(ctx context.Context, kind, normalizedLabel string) (*Entity, error)
+	ListEntities(ctx context.Context, filter EntityFilter) ([]Entity, error)
+	CreateEntityAlias(ctx context.Context, alias *EntityAlias) error
+	CreateEntityMention(ctx context.Context, mention *EntityMention) error
+	FindEntitiesByEvidence(ctx context.Context, evidenceID string) ([]Entity, error)
+
 	// Metadata
 	Mode() StoreMode
 	Close() error
