@@ -2,10 +2,10 @@ package kleio
 
 // Signal types classify the kind of event captured.
 const (
-	SignalTypeWorkItem  = "work_item"
+	SignalTypeWorkItem   = "work_item"
 	SignalTypeCheckpoint = "checkpoint"
-	SignalTypeDecision  = "decision"
-	SignalTypeGitCommit = "git_commit"
+	SignalTypeDecision   = "decision"
+	SignalTypeGitCommit  = "git_commit"
 )
 
 // Source types indicate how an event was ingested.
@@ -38,14 +38,14 @@ const (
 	// source RawSignal IDs for round-trip provenance.
 	// LinkTypeParentSignal is reserved for hierarchical Plan ingestion
 	// (umbrella plan signal -> child todo/decision/risk signals).
-	LinkTypeClusterAnchor   = "cluster_anchor"
-	LinkTypeCorrelatedWith  = "correlated_with"
-	LinkTypeDerivedFrom     = "derived_from"
-	LinkTypeParentSignal    = "parent_signal"
+	LinkTypeClusterAnchor  = "cluster_anchor"
+	LinkTypeCorrelatedWith = "correlated_with"
+	LinkTypeDerivedFrom    = "derived_from"
+	LinkTypeParentSignal   = "parent_signal"
 
 	// Work item hierarchy link types.
-	LinkTypeParentOf   = "parent_of"   // work_item A is parent of work_item B
-	LinkTypeSupersedes = "supersedes"  // work_item A replaces work_item B (refinement/split/merge)
+	LinkTypeParentOf   = "parent_of"  // work_item A is parent of work_item B
+	LinkTypeSupersedes = "supersedes" // work_item A replaces work_item B (refinement/split/merge)
 )
 
 // Backlog item statuses.
@@ -103,6 +103,16 @@ const (
 const (
 	AuthorTypeHuman = "human"
 	AuthorTypeAgent = "agent"
+)
+
+// Work-item status_authority tiers (relative integers; larger wins over smaller on ingest upsert).
+// See openspec WI-UPS and design docs.
+const (
+	WorkItemStatusAuthorityInferred   = 0
+	WorkItemStatusAuthorityPlan       = 10
+	WorkItemStatusAuthorityCheckpoint = 20
+	WorkItemStatusAuthorityExternal   = 30
+	WorkItemStatusAuthorityHuman      = 40
 )
 
 // Capture modes distinguish explicit user/agent actions from system-inferred

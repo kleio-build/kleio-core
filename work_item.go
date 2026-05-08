@@ -5,31 +5,46 @@ package kleio
 // downstream of events (Layer 2). Source metadata (source_type, source_id,
 // file_path, etc.) lives on the source event(s), reachable via derived_from
 // links in the links table.
+//
+// Authority fields steer ingest upserts: higher status_authority overwrites status
+// and correlated metadata only when WI-UPS-003 permits.
 type WorkItem struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Body        string `json:"body,omitempty"`
-	Summary     string `json:"summary,omitempty"`
-	Status      string `json:"status"`
-	Category    string `json:"category"`
-	Urgency     string `json:"urgency"`
-	Importance  string `json:"importance"`
-	RepoName    string `json:"repo_name,omitempty"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-	Synced      *bool  `json:"synced,omitempty"`
-	WorkspaceID string `json:"workspace_id,omitempty"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Body       string `json:"body,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Status     string `json:"status"`
+	Category   string `json:"category"`
+	Urgency    string `json:"urgency"`
+	Importance string `json:"importance"`
+	// Granularity is one of WorkItemGranularity* (container | item | subitem).
+	Granularity            string `json:"granularity,omitempty"`
+	StatusAuthority        int    `json:"status_authority,omitempty"`
+	StatusSource           string `json:"status_source,omitempty"`
+	StatusSourceEventID    string `json:"status_source_event_id,omitempty"`
+	SourceStatus           string `json:"source_status,omitempty"`
+	SourceStatusObservedAt string `json:"source_status_observed_at,omitempty"`
+	RepoName               string `json:"repo_name,omitempty"`
+	CreatedAt              string `json:"created_at"`
+	UpdatedAt              string `json:"updated_at"`
+	Synced                 *bool  `json:"synced,omitempty"`
+	WorkspaceID            string `json:"workspace_id,omitempty"`
 }
 
 // WorkItemFilter constrains which work items are returned by
 // Store.ListWorkItems.
 type WorkItemFilter struct {
-	Status      string `json:"status,omitempty"`
-	Category    string `json:"category,omitempty"`
-	Urgency     string `json:"urgency,omitempty"`
-	Importance  string `json:"importance,omitempty"`
-	RepoName    string `json:"repo_name,omitempty"`
-	Search      string `json:"search,omitempty"`
+	Status string `json:"status,omitempty"`
+	// Statuses filters by any of the given canonical status values in one query.
+	// If non-empty, Status must be empty.
+	Statuses   []string `json:"statuses,omitempty"`
+	Category   string   `json:"category,omitempty"`
+	Urgency    string   `json:"urgency,omitempty"`
+	Importance string   `json:"importance,omitempty"`
+	RepoName   string   `json:"repo_name,omitempty"`
+	Search     string   `json:"search,omitempty"`
+	// Granularity filters by exact canonical value when non-empty (container, item, subitem).
+	Granularity string `json:"granularity,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	Limit       int    `json:"limit,omitempty"`
 }

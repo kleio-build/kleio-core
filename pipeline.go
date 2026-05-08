@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -37,6 +38,9 @@ type Pipeline struct {
 	Store           Store
 	PostIngestHooks []PostIngestFunc
 	OnProgress      ProgressFunc
+	// WorkItemVocabulary supplies status normalization when deriving WorkItems from
+	// events (plan todos, workspace aliases). Nil uses BuiltinWorkItemVocabulary().
+	WorkItemVocabulary *WorkItemVocabulary
 }
 
 // Run executes one full pipeline pass and returns a PipelineReport
@@ -163,11 +167,12 @@ func (p *Pipeline) Run(ctx context.Context, scope IngestScope) (*PipelineReport,
 					}
 					persisted++
 
-				if ev.SignalType == SignalTypeWorkItem {
-					deriveWorkItem(ctx, p.Store, ev, seenWorkItemID, report)
-				} else if ev.SignalType == SignalTypeCheckpoint && isUmbrellaAnchor(ev) {
-					deriveUmbrellaWorkItem(ctx, p.Store, ev, seenWorkItemID, report)
-				}
+					if ev.SignalType == SignalTypeWorkItem {
+						vocab := p.resolveWorkItemVocab()
+						deriveWorkItem(ctx, p.Store, ev, seenWorkItemID, report, vocab)
+					} else if ev.SignalType == SignalTypeCheckpoint && isUmbrellaAnchor(ev) {
+						deriveUmbrellaWorkItem(ctx, p.Store, ev, seenWorkItemID, report)
+					}
 				}
 				report.EventsBySynthesizer[syn.Name()] += persisted
 			}
@@ -231,6 +236,14 @@ func persistCluster(ctx context.Context, store Store, cluster Cluster) int {
 	return created
 }
 
+// resolveWorkItemVocab returns workspace-configured normalization or builtins.
+func (p *Pipeline) resolveWorkItemVocab() *WorkItemVocabulary {
+	if p != nil && p.WorkItemVocabulary != nil {
+		return p.WorkItemVocabulary
+	}
+	return BuiltinWorkItemVocabulary()
+}
+
 // annotateEventWithCluster injects cluster_anchor_id, parent_signal_id,
 // and provenance into ev.StructuredData so the Event remains traceable
 // back to its originating Cluster. Existing keys in StructuredData are
@@ -256,7 +269,7 @@ func annotateEventWithCluster(ev *Event, cluster Cluster, synthName string) {
 // deriveWorkItem creates a WorkItem from a work_item-typed event and links
 // them via derived_from. The work item title is the first line of event
 // content, capped at 120 chars.
-func deriveWorkItem(ctx context.Context, store Store, ev *Event, seen map[string]bool, report *PipelineReport) {
+func deriveWorkItem(ctx context.Context, store Store, ev *Event, seen map[string]bool, report *PipelineReport, vocab *WorkItemVocabulary) {
 	wiID := "wi-" + ev.ID
 	if seen[wiID] {
 		return
@@ -270,18 +283,25 @@ func deriveWorkItem(ctx context.Context, store Store, ev *Event, seen map[string
 		title = title[:120]
 	}
 
-	wi := &WorkItem{
-		ID:        wiID,
-		Title:     title,
-		Body:      ev.Content,
-		Status:    StatusOpen,
-		Category:  CategoryTask,
-		Urgency:   UrgencyMedium,
-		Importance: ImportanceMedium,
-		RepoName:  ev.RepoName,
-		CreatedAt: ev.CreatedAt,
-		UpdatedAt: ev.CreatedAt,
+	if vocab == nil {
+		vocab = BuiltinWorkItemVocabulary()
 	}
+	status := deriveWorkItemStatus(ev, vocab)
+
+	wi := &WorkItem{
+		ID:          wiID,
+		Title:       title,
+		Body:        ev.Content,
+		Status:      status,
+		Category:    CategoryTask,
+		Urgency:     UrgencyMedium,
+		Importance:  ImportanceMedium,
+		Granularity: deriveWorkItemGranularity(ev),
+		RepoName:    ev.RepoName,
+		CreatedAt:   ev.CreatedAt,
+		UpdatedAt:   ev.CreatedAt,
+	}
+	attachIngestWorkItemAuthority(wi, ev)
 
 	if err := store.CreateWorkItem(ctx, wi); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("derive work item: %v", err))
@@ -354,17 +374,22 @@ func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen ma
 	}
 
 	wi := &WorkItem{
-		ID:        wiID,
-		Title:     title,
-		Body:      ev.Content,
-		Status:    StatusOpen,
-		Category:  "plan",
-		Urgency:   "medium",
-		Importance: "medium",
-		RepoName:  ev.RepoName,
-		CreatedAt: ev.CreatedAt,
-		UpdatedAt: ev.CreatedAt,
+		ID:          wiID,
+		Title:       title,
+		Body:        ev.Content,
+		Status:      WorkItemStatusOpen,
+		Category:    "plan",
+		Urgency:     "medium",
+		Importance:  "medium",
+		Granularity: WorkItemGranularityContainer,
+		RepoName:    ev.RepoName,
+		CreatedAt:   ev.CreatedAt,
+		UpdatedAt:   ev.CreatedAt,
 	}
+	wi.StatusAuthority = WorkItemStatusAuthorityPlan
+	wi.StatusSource = ev.SourceType
+	wi.StatusSourceEventID = ev.ID
+	wi.SourceStatusObservedAt = ev.CreatedAt
 
 	if err := store.CreateWorkItem(ctx, wi); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("derive umbrella work item: %v", err))
@@ -381,6 +406,101 @@ func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen ma
 	}
 	if err := store.CreateLink(ctx, link); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("link umbrella provenance: %v", err))
+	}
+}
+
+// isPlanFrontmatterTodoEvent is true for work items emitted from a plan file
+// frontmatter todo (WI-PLN-001): cursor_plan source with todo_id or todo: source_offset.
+func isPlanFrontmatterTodoEvent(ev *Event) bool {
+	if ev == nil || ev.SignalType != SignalTypeWorkItem || ev.SourceType != "cursor_plan" {
+		return false
+	}
+	if ev.StructuredData == "" {
+		return false
+	}
+	var sd map[string]any
+	if err := json.Unmarshal([]byte(ev.StructuredData), &sd); err != nil {
+		return false
+	}
+	if id, ok := sd[StructuredKeyTodoID].(string); ok && strings.TrimSpace(id) != "" {
+		return true
+	}
+	off, ok := sd[StructuredKeySourceOffset].(string)
+	return ok && strings.HasPrefix(off, "todo:")
+}
+
+func planTodoRawStatus(ev *Event) string {
+	if ev == nil || ev.StructuredData == "" {
+		return ""
+	}
+	var sd map[string]any
+	if err := json.Unmarshal([]byte(ev.StructuredData), &sd); err != nil {
+		return ""
+	}
+	raw, _ := sd[StructuredKeyPlanStatus].(string)
+	return raw
+}
+
+// deriveWorkItemGranularity applies WI-GRN defaults: umbrella is handled in
+// deriveUmbrellaWorkItem; plan frontmatter todos are item, or subitem when
+// parent_signal_id is set (nested under a plan umbrella).
+func deriveWorkItemGranularity(ev *Event) string {
+	if isPlanFrontmatterTodoEvent(ev) && eventParentSignalID(ev) != "" {
+		return WorkItemGranularitySubitem
+	}
+	if isPlanFrontmatterTodoEvent(ev) {
+		return WorkItemGranularityItem
+	}
+	return WorkItemGranularityItem
+}
+
+func eventParentSignalID(ev *Event) string {
+	if ev == nil || ev.StructuredData == "" {
+		return ""
+	}
+	var sd map[string]any
+	if err := json.Unmarshal([]byte(ev.StructuredData), &sd); err != nil {
+		return ""
+	}
+	s, _ := sd[StructuredKeyParentSignalID].(string)
+	return strings.TrimSpace(s)
+}
+
+// deriveWorkItemStatus applies plan todo normalization (WI-PLN-001/002) or defaults to open.
+func deriveWorkItemStatus(ev *Event, vocab *WorkItemVocabulary) string {
+	if !isPlanFrontmatterTodoEvent(ev) {
+		return WorkItemStatusOpen
+	}
+	raw := strings.TrimSpace(planTodoRawStatus(ev))
+	if raw == "" {
+		return WorkItemStatusOpen
+	}
+	canonical, err := vocab.NormalizeStatus(raw)
+	if err != nil {
+		return WorkItemStatusOpen
+	}
+	return canonical
+}
+
+// attachIngestWorkItemAuthority stamps WI-UPS ingest provenance before CreateWorkItem upsert.
+func attachIngestWorkItemAuthority(wi *WorkItem, ev *Event) {
+	if wi == nil || ev == nil {
+		return
+	}
+	switch ev.SourceType {
+	case "cursor_plan":
+		wi.StatusAuthority = WorkItemStatusAuthorityPlan
+		wi.StatusSource = ev.SourceType
+		wi.StatusSourceEventID = ev.ID
+		if isPlanFrontmatterTodoEvent(ev) {
+			wi.SourceStatus = strings.TrimSpace(planTodoRawStatus(ev))
+		}
+		wi.SourceStatusObservedAt = ev.CreatedAt
+	default:
+		wi.StatusAuthority = WorkItemStatusAuthorityInferred
+		wi.StatusSource = ev.SourceType
+		wi.StatusSourceEventID = ev.ID
+		wi.SourceStatusObservedAt = ev.CreatedAt
 	}
 }
 

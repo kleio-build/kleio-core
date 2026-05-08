@@ -77,12 +77,12 @@ type ClusterLink struct {
 // in the link graph -- there is no separate "clusters" table -- which
 // keeps Phase 1's schema delta to one new LinkType lookup row.
 type Cluster struct {
-	AnchorID    string        `json:"anchor_id"`
-	AnchorType  string        `json:"anchor_type"`
-	Members     []RawSignal   `json:"members"`
-	Links       []ClusterLink `json:"links,omitempty"`
-	Confidence  float64       `json:"confidence"`
-	Provenance  []string      `json:"provenance,omitempty"`
+	AnchorID   string        `json:"anchor_id"`
+	AnchorType string        `json:"anchor_type"`
+	Members    []RawSignal   `json:"members"`
+	Links      []ClusterLink `json:"links,omitempty"`
+	Confidence float64       `json:"confidence"`
+	Provenance []string      `json:"provenance,omitempty"`
 }
 
 // IngestScope tells an Ingester what to load from its source. Ingesters
@@ -159,4 +159,7 @@ const (
 	StructuredKeyClusterAnchorID = "cluster_anchor_id"
 	StructuredKeyParentSignalID  = "parent_signal_id"
 	StructuredKeyProvenance      = "provenance"
+	StructuredKeyPlanStatus      = "plan_status"
+	StructuredKeySourceOffset    = "source_offset"
+	StructuredKeyTodoID          = "todo_id"
 )

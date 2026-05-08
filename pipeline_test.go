@@ -40,10 +40,10 @@ func (s *fakeStore) CreateBacklogItem(context.Context, *BacklogItem) error { ret
 func (s *fakeStore) ListBacklogItems(context.Context, BacklogFilter) ([]BacklogItem, error) {
 	return nil, nil
 }
-func (s *fakeStore) GetBacklogItem(context.Context, string) (*BacklogItem, error)         { return nil, nil }
-func (s *fakeStore) UpdateBacklogItem(context.Context, string, *BacklogItem) error        { return nil }
-func (s *fakeStore) IndexCommits(context.Context, string, []Commit) error                  { return nil }
-func (s *fakeStore) QueryCommits(context.Context, CommitFilter) ([]Commit, error)          { return nil, nil }
+func (s *fakeStore) GetBacklogItem(context.Context, string) (*BacklogItem, error)  { return nil, nil }
+func (s *fakeStore) UpdateBacklogItem(context.Context, string, *BacklogItem) error { return nil }
+func (s *fakeStore) IndexCommits(context.Context, string, []Commit) error          { return nil }
+func (s *fakeStore) QueryCommits(context.Context, CommitFilter) ([]Commit, error)  { return nil, nil }
 
 func (s *fakeStore) CreateLink(_ context.Context, l *Link) error {
 	s.mu.Lock()
@@ -53,8 +53,8 @@ func (s *fakeStore) CreateLink(_ context.Context, l *Link) error {
 }
 func (s *fakeStore) QueryLinks(context.Context, LinkFilter) ([]Link, error) { return nil, nil }
 
-func (s *fakeStore) TrackFileChange(context.Context, *FileChange) error             { return nil }
-func (s *fakeStore) FileHistory(context.Context, string) ([]FileChange, error)       { return nil, nil }
+func (s *fakeStore) TrackFileChange(context.Context, *FileChange) error        { return nil }
+func (s *fakeStore) FileHistory(context.Context, string) ([]FileChange, error) { return nil, nil }
 func (s *fakeStore) Search(context.Context, string, SearchOpts) ([]SearchResult, error) {
 	return nil, nil
 }
@@ -78,15 +78,17 @@ func (s *fakeStore) GetWorkItem(_ context.Context, id string) (*WorkItem, error)
 	}
 	return nil, nil
 }
-func (s *fakeStore) UpdateWorkItem(context.Context, string, *WorkItem) error  { return nil }
+func (s *fakeStore) UpdateWorkItem(context.Context, string, *WorkItem) error { return nil }
 
-func (s *fakeStore) CreateEntity(context.Context, *Entity) error                        { return nil }
-func (s *fakeStore) FindEntity(context.Context, string, string) (*Entity, error)        { return nil, nil }
-func (s *fakeStore) FindEntityByAlias(context.Context, string) (*Entity, error)         { return nil, nil }
-func (s *fakeStore) ListEntities(context.Context, EntityFilter) ([]Entity, error)       { return nil, nil }
-func (s *fakeStore) CreateEntityAlias(context.Context, *EntityAlias) error              { return nil }
-func (s *fakeStore) CreateEntityMention(context.Context, *EntityMention) error          { return nil }
-func (s *fakeStore) FindEntitiesByEvidence(context.Context, string) ([]Entity, error)   { return nil, nil }
+func (s *fakeStore) CreateEntity(context.Context, *Entity) error                  { return nil }
+func (s *fakeStore) FindEntity(context.Context, string, string) (*Entity, error)  { return nil, nil }
+func (s *fakeStore) FindEntityByAlias(context.Context, string) (*Entity, error)   { return nil, nil }
+func (s *fakeStore) ListEntities(context.Context, EntityFilter) ([]Entity, error) { return nil, nil }
+func (s *fakeStore) CreateEntityAlias(context.Context, *EntityAlias) error        { return nil }
+func (s *fakeStore) CreateEntityMention(context.Context, *EntityMention) error    { return nil }
+func (s *fakeStore) FindEntitiesByEvidence(context.Context, string) ([]Entity, error) {
+	return nil, nil
+}
 
 // fakeIngester emits the configured signals; if errFor is set, it errors instead.
 type fakeIngester struct {
@@ -313,7 +315,10 @@ func TestNewLinkTypeConstantsArePresent(t *testing.T) {
 }
 
 func TestStructuredKeysExported(t *testing.T) {
-	for _, k := range []string{StructuredKeyClusterAnchorID, StructuredKeyParentSignalID, StructuredKeyProvenance} {
+	for _, k := range []string{
+		StructuredKeyClusterAnchorID, StructuredKeyParentSignalID, StructuredKeyProvenance,
+		StructuredKeyPlanStatus, StructuredKeySourceOffset, StructuredKeyTodoID,
+	} {
 		if k == "" {
 			t.Fatalf("expected non-empty StructuredKey constant")
 		}
@@ -358,6 +363,211 @@ func (s *fakeStoreWithWorkItems) GetWorkItem(_ context.Context, id string) (*Wor
 	return nil, nil
 }
 
+// planTodoStatusesSynth emits several plan-derived work_item events like plan_cluster output.
+type planTodoStatusesSynth struct{ name string }
+
+func (s *planTodoStatusesSynth) Name() string { return s.name }
+
+func (s *planTodoStatusesSynth) Synthesize(_ context.Context, c Cluster) ([]Event, error) {
+	ts := time.Now().UTC().Format(time.RFC3339)
+	anchor := c.AnchorID
+	provenance := "plan_cluster"
+	var out []Event
+	for _, tc := range []struct {
+		evID   string
+		todoID string
+		offset string
+		raw    string
+	}{
+		{"ev-plan-pending", "t1", "todo:t1", "pending"},
+		{"ev-plan-active", "t2", "todo:t2", "in_progress"},
+		{"ev-plan-done", "t3", "todo:t3", "completed"},
+		{"ev-plan-can", "t4", "todo:t4", "cancelled"},
+		{"ev-plan-wont", "t5", "todo:t5", "wontfix"},
+	} {
+		sd, _ := json.Marshal(map[string]any{
+			StructuredKeyClusterAnchorID: anchor,
+			StructuredKeyProvenance:      provenance,
+			StructuredKeySourceOffset:    tc.offset,
+			StructuredKeyTodoID:          tc.todoID,
+			StructuredKeyPlanStatus:      tc.raw,
+		})
+		out = append(out, Event{
+			ID:             tc.evID,
+			SignalType:     SignalTypeWorkItem,
+			Content:        "Task " + tc.todoID + "\nDetail",
+			SourceType:     "cursor_plan",
+			CreatedAt:      ts,
+			StructuredData: string(sd),
+			AuthorType:     AuthorTypeAgent,
+			RepoName:       "r1",
+			SignalID:       anchor + "#" + tc.todoID,
+		})
+	}
+	return out, nil
+}
+
+type transcriptDerivedWorkItemSynth struct{ name string }
+
+func (s *transcriptDerivedWorkItemSynth) Name() string { return s.name }
+func (s *transcriptDerivedWorkItemSynth) Synthesize(_ context.Context, _ Cluster) ([]Event, error) {
+	return []Event{{
+		ID:             "ev-trans-retro",
+		SignalType:     SignalTypeWorkItem,
+		Content:        "Fix from transcript retro\nBody",
+		SourceType:     SourceTypeCursorTranscript,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		StructuredData: `{"channel":"user_retro_ask"}`,
+		AuthorType:     AuthorTypeHuman,
+	}}, nil
+}
+
+// planTodoNoStatusSynth is a minimal plan frontmatter todo without plan_status (WI-PLN-002).
+type planTodoNoStatusSynth struct{ name string }
+
+func (s *planTodoNoStatusSynth) Name() string { return s.name }
+func (s *planTodoNoStatusSynth) Synthesize(_ context.Context, c Cluster) ([]Event, error) {
+	sd, _ := json.Marshal(map[string]any{
+		StructuredKeyClusterAnchorID: c.AnchorID,
+		StructuredKeyProvenance:      "plan_cluster",
+		StructuredKeySourceOffset:    "todo:t-empty",
+		StructuredKeyTodoID:          "t-empty",
+	})
+	return []Event{{
+		ID:             "ev-plan-no-status",
+		SignalType:     SignalTypeWorkItem,
+		Content:        "Todo sans status\nx",
+		SourceType:     "cursor_plan",
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		StructuredData: string(sd),
+		AuthorType:     AuthorTypeAgent,
+	}}, nil
+}
+
+func TestPipeline_DerivesPlanTodoStatusesFromStructuredData(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStoreWithWorkItems{}
+	pipe := &Pipeline{
+		Store: store,
+		Ingesters: []Ingester{&fakeIngester{name: "ing", signals: []RawSignal{
+			{SourceType: "cursor_plan", SourceID: "plan-anchor-1"},
+		}}},
+		Correlators:  []Correlator{&fakeCorrelator{name: "cor"}},
+		Synthesizers: []Synthesizer{&planTodoStatusesSynth{name: "plan-multi"}},
+	}
+	if _, err := pipe.Run(ctx, IngestScope{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if len(store.workItems) != 5 {
+		t.Fatalf("expected 5 work items, got %d", len(store.workItems))
+	}
+	for _, w := range store.workItems {
+		if w.Granularity != WorkItemGranularityItem {
+			t.Errorf("%s: granularity=%q want item", w.ID, w.Granularity)
+		}
+	}
+	byID := map[string]string{}
+	for _, w := range store.workItems {
+		byID[w.ID] = w.Status
+	}
+	cases := []struct {
+		evID, want string
+	}{
+		{"ev-plan-pending", WorkItemStatusOpen},
+		{"ev-plan-active", WorkItemStatusActive},
+		{"ev-plan-done", WorkItemStatusDone},
+		{"ev-plan-can", WorkItemStatusIgnored},
+		{"ev-plan-wont", WorkItemStatusIgnored},
+	}
+	for _, c := range cases {
+		wid := "wi-" + c.evID
+		if got := byID[wid]; got != c.want {
+			t.Errorf("%s status=%q want %q", wid, got, c.want)
+		}
+	}
+}
+
+func TestPipeline_PlanTodoMissingPlanStatusIsOpen(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStoreWithWorkItems{}
+	pipe := &Pipeline{
+		Store: store,
+		Ingesters: []Ingester{&fakeIngester{name: "ing", signals: []RawSignal{
+			{SourceType: "cursor_plan", SourceID: "plan-p2"},
+		}}},
+		Correlators:  []Correlator{&fakeCorrelator{name: "cor"}},
+		Synthesizers: []Synthesizer{&planTodoNoStatusSynth{name: "one"}},
+	}
+	if _, err := pipe.Run(ctx, IngestScope{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.workItems) != 1 {
+		t.Fatalf("want 1 work item got %d", len(store.workItems))
+	}
+	if store.workItems[0].Status != WorkItemStatusOpen {
+		t.Errorf("want open got %q", store.workItems[0].Status)
+	}
+	if store.workItems[0].Granularity != WorkItemGranularityItem {
+		t.Errorf("want granularity item got %q", store.workItems[0].Granularity)
+	}
+}
+
+func TestPipeline_TranscriptWorkItemStaysOpen(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStoreWithWorkItems{}
+	pipe := &Pipeline{
+		Store: store,
+		Ingesters: []Ingester{&fakeIngester{name: "ing", signals: []RawSignal{
+			{SourceType: SourceTypeCursorTranscript, SourceID: "tr-1"},
+		}}},
+		Correlators:  []Correlator{&fakeCorrelator{name: "cor"}},
+		Synthesizers: []Synthesizer{&transcriptDerivedWorkItemSynth{name: "trans-wi"}},
+	}
+	if _, err := pipe.Run(ctx, IngestScope{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.workItems) != 1 {
+		t.Fatalf("want 1 work item, got %d", len(store.workItems))
+	}
+	if store.workItems[0].Status != WorkItemStatusOpen {
+		t.Errorf("transcript-derived status=%q want open", store.workItems[0].Status)
+	}
+	if store.workItems[0].Granularity != WorkItemGranularityItem {
+		t.Errorf("transcript granularity=%q want item", store.workItems[0].Granularity)
+	}
+}
+
+func TestDeriveWorkItemGranularity_PlanTodoAndNested(t *testing.T) {
+	plainPlanTodo := &Event{
+		SignalType: SignalTypeWorkItem, SourceType: "cursor_plan",
+		StructuredData: `{"todo_id":"t1","source_offset":"todo:t1"}`,
+	}
+	if g := deriveWorkItemGranularity(plainPlanTodo); g != WorkItemGranularityItem {
+		t.Fatalf("plan todo: want item got %q", g)
+	}
+	nested := &Event{
+		SignalType: SignalTypeWorkItem, SourceType: "cursor_plan",
+		StructuredData: `{"todo_id":"t1","source_offset":"todo:t1","parent_signal_id":"evt-u1"}`,
+	}
+	if g := deriveWorkItemGranularity(nested); g != WorkItemGranularitySubitem {
+		t.Fatalf("nested plan todo: want subitem got %q", g)
+	}
+	transcript := &Event{
+		SignalType: SignalTypeWorkItem, SourceType: SourceTypeCursorTranscript,
+		StructuredData: `{}`,
+	}
+	if g := deriveWorkItemGranularity(transcript); g != WorkItemGranularityItem {
+		t.Fatalf("non-plan work item: want item got %q", g)
+	}
+}
+
 func TestPipeline_DerivesWorkItemsFromWorkItemEvents(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeStoreWithWorkItems{}
@@ -398,6 +608,9 @@ func TestPipeline_DerivesWorkItemsFromWorkItemEvents(t *testing.T) {
 	}
 	if wi.Status != StatusOpen {
 		t.Errorf("work item status = %q, want %q", wi.Status, StatusOpen)
+	}
+	if wi.Granularity != WorkItemGranularityItem {
+		t.Errorf("work item granularity = %q, want item", wi.Granularity)
 	}
 
 	// Check derived_from link was created
@@ -524,8 +737,14 @@ func TestPipeline_UmbrellaCheckpointCreatesWorkItem(t *testing.T) {
 	if umbrellaWI == nil {
 		t.Fatal("expected umbrella work item with category 'plan'")
 	}
+	if umbrellaWI.Granularity != WorkItemGranularityContainer {
+		t.Errorf("umbrella granularity=%q want container", umbrellaWI.Granularity)
+	}
 	if childWI == nil {
 		t.Fatal("expected child work item")
+	}
+	if childWI.Granularity != WorkItemGranularityItem {
+		t.Errorf("child granularity=%q want item", childWI.Granularity)
 	}
 
 	// Verify parent_of link: umbrella WI -> child WI
