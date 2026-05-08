@@ -23,6 +23,7 @@ type CommitFilter struct {
 	RepoPath      string `json:"repo_path,omitempty"`
 	RepoName      string `json:"repo_name,omitempty"`
 	Branch        string `json:"branch,omitempty"`
+	BranchSearch  string `json:"branch_search,omitempty"`
 	AuthorName    string `json:"author_name,omitempty"`
 	AuthorEmail   string `json:"author_email,omitempty"`
 	MessageSearch string `json:"message_search,omitempty"`
@@ -30,6 +31,7 @@ type CommitFilter struct {
 	Until         string `json:"until,omitempty"`
 	FilePath      string `json:"file_path,omitempty"`
 	IsMerge       *bool  `json:"is_merge,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
 	Limit         int    `json:"limit,omitempty"`
 }
 

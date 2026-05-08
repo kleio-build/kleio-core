@@ -52,11 +52,17 @@ type Store interface {
 	ListEvents(ctx context.Context, filter EventFilter) ([]Event, error)
 	GetEvent(ctx context.Context, id string) (*Event, error)
 
-	// Backlog
+	// Backlog (deprecated -- use Work Items)
 	CreateBacklogItem(ctx context.Context, item *BacklogItem) error
 	ListBacklogItems(ctx context.Context, filter BacklogFilter) ([]BacklogItem, error)
 	GetBacklogItem(ctx context.Context, id string) (*BacklogItem, error)
 	UpdateBacklogItem(ctx context.Context, id string, update *BacklogItem) error
+
+	// Work Items (Layer 3: actionable output derived from events)
+	CreateWorkItem(ctx context.Context, item *WorkItem) error
+	ListWorkItems(ctx context.Context, filter WorkItemFilter) ([]WorkItem, error)
+	GetWorkItem(ctx context.Context, id string) (*WorkItem, error)
+	UpdateWorkItem(ctx context.Context, id string, update *WorkItem) error
 
 	// Git index
 	IndexCommits(ctx context.Context, repoPath string, commits []Commit) error
@@ -76,6 +82,7 @@ type Store interface {
 	// Entities
 	CreateEntity(ctx context.Context, entity *Entity) error
 	FindEntity(ctx context.Context, kind, normalizedLabel string) (*Entity, error)
+	FindEntityByAlias(ctx context.Context, alias string) (*Entity, error)
 	ListEntities(ctx context.Context, filter EntityFilter) ([]Entity, error)
 	CreateEntityAlias(ctx context.Context, alias *EntityAlias) error
 	CreateEntityMention(ctx context.Context, mention *EntityMention) error

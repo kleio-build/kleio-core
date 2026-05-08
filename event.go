@@ -16,6 +16,8 @@ type Event struct {
 	StructuredData  string `json:"structured_data,omitempty"`
 	AuthorType      string `json:"author_type"`
 	AuthorLabel     string `json:"author_label,omitempty"`
+	SignalID        string `json:"signal_id,omitempty"`
+	CaptureMode     string `json:"capture_mode,omitempty"`
 	Synced          bool   `json:"synced"`
 }
 
@@ -26,7 +28,9 @@ type EventFilter struct {
 	RepoName      string `json:"repo_name,omitempty"`
 	AuthorType    string `json:"author_type,omitempty"`
 	ContentSearch string `json:"content_search,omitempty"`
+	SignalID      string `json:"signal_id,omitempty"`
 	CreatedAfter  string `json:"created_after,omitempty"`
 	CreatedBefore string `json:"created_before,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
 	Limit         int    `json:"limit,omitempty"`
 }

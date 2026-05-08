@@ -42,6 +42,10 @@ const (
 	LinkTypeCorrelatedWith  = "correlated_with"
 	LinkTypeDerivedFrom     = "derived_from"
 	LinkTypeParentSignal    = "parent_signal"
+
+	// Work item hierarchy link types.
+	LinkTypeParentOf   = "parent_of"   // work_item A is parent of work_item B
+	LinkTypeSupersedes = "supersedes"  // work_item A replaces work_item B (refinement/split/merge)
 )
 
 // Backlog item statuses.
@@ -99,6 +103,14 @@ const (
 const (
 	AuthorTypeHuman = "human"
 	AuthorTypeAgent = "agent"
+)
+
+// Capture modes distinguish explicit user/agent actions from system-inferred
+// or system-generated signals.
+const (
+	CaptureModeExplicit    = "explicit"    // deliberate tool invocation
+	CaptureModeDerived     = "derived"     // inferred from source material (transcript mining, plan parsing)
+	CaptureModeSynthesized = "synthesized" // LLM/pipeline-generated (summaries, dedup merges)
 )
 
 // File change types.

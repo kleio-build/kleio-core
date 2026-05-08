@@ -22,12 +22,13 @@ type BacklogItem struct {
 // BacklogFilter constrains which backlog items are returned by
 // Store.ListBacklogItems.
 type BacklogFilter struct {
-	Status     string `json:"status,omitempty"`
-	Category   string `json:"category,omitempty"`
-	Urgency    string `json:"urgency,omitempty"`
-	Importance string `json:"importance,omitempty"`
-	RepoName   string `json:"repo_name,omitempty"`
-	Search     string `json:"search,omitempty"`
-	Assignee   string `json:"assignee,omitempty"`
-	Limit      int    `json:"limit,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Urgency     string `json:"urgency,omitempty"`
+	Importance  string `json:"importance,omitempty"`
+	RepoName    string `json:"repo_name,omitempty"`
+	Search      string `json:"search,omitempty"`
+	Assignee    string `json:"assignee,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
 }

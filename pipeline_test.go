@@ -13,9 +13,10 @@ import (
 // every CreateEvent / CreateLink call for assertion. It deliberately
 // ignores everything not exercised by Pipeline.Run.
 type fakeStore struct {
-	mu     sync.Mutex
-	events []*Event
-	links  []*Link
+	mu        sync.Mutex
+	events    []*Event
+	links     []*Link
+	workItems []*WorkItem
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{} }
@@ -57,6 +58,35 @@ func (s *fakeStore) FileHistory(context.Context, string) ([]FileChange, error)  
 func (s *fakeStore) Search(context.Context, string, SearchOpts) ([]SearchResult, error) {
 	return nil, nil
 }
+
+func (s *fakeStore) CreateWorkItem(_ context.Context, w *WorkItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workItems = append(s.workItems, w)
+	return nil
+}
+func (s *fakeStore) ListWorkItems(context.Context, WorkItemFilter) ([]WorkItem, error) {
+	return nil, nil
+}
+func (s *fakeStore) GetWorkItem(_ context.Context, id string) (*WorkItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.workItems {
+		if w.ID == id {
+			return w, nil
+		}
+	}
+	return nil, nil
+}
+func (s *fakeStore) UpdateWorkItem(context.Context, string, *WorkItem) error  { return nil }
+
+func (s *fakeStore) CreateEntity(context.Context, *Entity) error                        { return nil }
+func (s *fakeStore) FindEntity(context.Context, string, string) (*Entity, error)        { return nil, nil }
+func (s *fakeStore) FindEntityByAlias(context.Context, string) (*Entity, error)         { return nil, nil }
+func (s *fakeStore) ListEntities(context.Context, EntityFilter) ([]Entity, error)       { return nil, nil }
+func (s *fakeStore) CreateEntityAlias(context.Context, *EntityAlias) error              { return nil }
+func (s *fakeStore) CreateEntityMention(context.Context, *EntityMention) error          { return nil }
+func (s *fakeStore) FindEntitiesByEvidence(context.Context, string) ([]Entity, error)   { return nil, nil }
 
 // fakeIngester emits the configured signals; if errFor is set, it errors instead.
 type fakeIngester struct {
@@ -286,6 +316,232 @@ func TestStructuredKeysExported(t *testing.T) {
 	for _, k := range []string{StructuredKeyClusterAnchorID, StructuredKeyParentSignalID, StructuredKeyProvenance} {
 		if k == "" {
 			t.Fatalf("expected non-empty StructuredKey constant")
+		}
+	}
+}
+
+// workItemSynthesizer emits work_item events for pipeline derivation testing.
+type workItemSynthesizer struct{ name string }
+
+func (s *workItemSynthesizer) Name() string { return s.name }
+func (s *workItemSynthesizer) Synthesize(_ context.Context, cluster Cluster) ([]Event, error) {
+	return []Event{{
+		ID:         "evt-wi-" + cluster.AnchorID,
+		SignalType: SignalTypeWorkItem,
+		Content:    "Fix: " + cluster.AnchorID + "\nDetailed description here",
+		SourceType: SourceTypeAgent,
+		AuthorType: AuthorTypeAgent,
+	}}, nil
+}
+
+// fakeStoreWithWorkItems tracks work items and their links
+type fakeStoreWithWorkItems struct {
+	fakeStore
+	workItems []*WorkItem
+}
+
+func (s *fakeStoreWithWorkItems) CreateWorkItem(_ context.Context, w *WorkItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.workItems = append(s.workItems, w)
+	return nil
+}
+
+func (s *fakeStoreWithWorkItems) GetWorkItem(_ context.Context, id string) (*WorkItem, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.workItems {
+		if w.ID == id {
+			return w, nil
+		}
+	}
+	return nil, nil
+}
+
+func TestPipeline_DerivesWorkItemsFromWorkItemEvents(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStoreWithWorkItems{}
+
+	pipe := &Pipeline{
+		Store: store,
+		Ingesters: []Ingester{&fakeIngester{
+			name: "test-ingest",
+			signals: []RawSignal{
+				{SourceType: "cursor_plan", SourceID: "plan-1", Content: "Fix the auth bug"},
+			},
+		}},
+		Correlators:  []Correlator{&fakeCorrelator{name: "test-corr"}},
+		Synthesizers: []Synthesizer{&workItemSynthesizer{name: "wi-synth"}},
+	}
+
+	report, err := pipe.Run(ctx, IngestScope{})
+	if err != nil {
+		t.Fatalf("pipeline run failed: %v", err)
+	}
+	if len(report.Errors) > 0 {
+		t.Errorf("unexpected errors: %v", report.Errors)
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	if len(store.workItems) != 1 {
+		t.Fatalf("expected 1 work item, got %d", len(store.workItems))
+	}
+
+	wi := store.workItems[0]
+	if wi.ID != "wi-evt-wi-plan-1" {
+		t.Errorf("work item ID = %q, want %q", wi.ID, "wi-evt-wi-plan-1")
+	}
+	if wi.Title != "Fix: plan-1" {
+		t.Errorf("work item title = %q, want %q", wi.Title, "Fix: plan-1")
+	}
+	if wi.Status != StatusOpen {
+		t.Errorf("work item status = %q, want %q", wi.Status, StatusOpen)
+	}
+
+	// Check derived_from link was created
+	hasDerivation := false
+	for _, l := range store.links {
+		if l.LinkType == LinkTypeDerivedFrom && l.TargetID == wi.ID {
+			hasDerivation = true
+		}
+	}
+	if !hasDerivation {
+		t.Error("expected derived_from link from event to work item")
+	}
+}
+
+func TestWorkItemLinkTypeConstants(t *testing.T) {
+	if LinkTypeParentOf != "parent_of" {
+		t.Errorf("LinkTypeParentOf = %q, want parent_of", LinkTypeParentOf)
+	}
+	if LinkTypeSupersedes != "supersedes" {
+		t.Errorf("LinkTypeSupersedes = %q, want supersedes", LinkTypeSupersedes)
+	}
+}
+
+func TestIsUmbrellaAnchor(t *testing.T) {
+	tests := []struct {
+		name string
+		ev   *Event
+		want bool
+	}{
+		{"anchor true", &Event{StructuredData: `{"is_anchor": true}`}, true},
+		{"anchor false", &Event{StructuredData: `{"is_anchor": false}`}, false},
+		{"no is_anchor", &Event{StructuredData: `{"foo": "bar"}`}, false},
+		{"empty structured data", &Event{StructuredData: ""}, false},
+		{"invalid json", &Event{StructuredData: "not json"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isUmbrellaAnchor(tt.ev); got != tt.want {
+				t.Errorf("isUmbrellaAnchor() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// umbrellaCheckpointSynthesizer emits a checkpoint event with is_anchor=true,
+// plus a child work_item event referencing it.
+type umbrellaCheckpointSynthesizer struct{ name string }
+
+func (s *umbrellaCheckpointSynthesizer) Name() string { return s.name }
+func (s *umbrellaCheckpointSynthesizer) Synthesize(_ context.Context, cluster Cluster) ([]Event, error) {
+	umbrellaSD, _ := json.Marshal(map[string]any{
+		StructuredKeyClusterAnchorID: cluster.AnchorID,
+		StructuredKeyParentSignalID:  cluster.AnchorID,
+		StructuredKeyProvenance:      "plan_cluster",
+		"is_anchor":                  true,
+	})
+	childSD, _ := json.Marshal(map[string]any{
+		StructuredKeyClusterAnchorID: cluster.AnchorID,
+		StructuredKeyParentSignalID:  "evt-umbrella-" + cluster.AnchorID,
+		StructuredKeyProvenance:      "plan_cluster",
+	})
+	return []Event{
+		{
+			ID:             "evt-umbrella-" + cluster.AnchorID,
+			SignalType:     SignalTypeCheckpoint,
+			Content:        "Umbrella: " + cluster.AnchorID,
+			SourceType:     "cursor_plan",
+			AuthorType:     AuthorTypeAgent,
+			StructuredData: string(umbrellaSD),
+		},
+		{
+			ID:             "evt-child-" + cluster.AnchorID,
+			SignalType:     SignalTypeWorkItem,
+			Content:        "Todo: child task for " + cluster.AnchorID,
+			SourceType:     "cursor_plan",
+			AuthorType:     AuthorTypeAgent,
+			StructuredData: string(childSD),
+		},
+	}, nil
+}
+
+func TestPipeline_UmbrellaCheckpointCreatesWorkItem(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeStoreWithWorkItems{}
+
+	pipe := &Pipeline{
+		Store: store,
+		Ingesters: []Ingester{&fakeIngester{
+			name: "test-ingest",
+			signals: []RawSignal{
+				{SourceType: "cursor_plan", SourceID: "plan-umbrella", Content: "Plan with hierarchy"},
+			},
+		}},
+		Correlators:  []Correlator{&fakeCorrelator{name: "test-corr"}},
+		Synthesizers: []Synthesizer{&umbrellaCheckpointSynthesizer{name: "umbrella-synth"}},
+	}
+
+	report, err := pipe.Run(ctx, IngestScope{})
+	if err != nil {
+		t.Fatalf("pipeline run failed: %v", err)
+	}
+	if len(report.Errors) > 0 {
+		t.Errorf("unexpected errors: %v", report.Errors)
+	}
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	// Should have 2 work items: one for umbrella, one for child
+	if len(store.workItems) != 2 {
+		t.Fatalf("expected 2 work items, got %d", len(store.workItems))
+	}
+
+	// Find the umbrella and child work items
+	var umbrellaWI, childWI *WorkItem
+	for _, wi := range store.workItems {
+		if wi.Category == "plan" {
+			umbrellaWI = wi
+		} else {
+			childWI = wi
+		}
+	}
+
+	if umbrellaWI == nil {
+		t.Fatal("expected umbrella work item with category 'plan'")
+	}
+	if childWI == nil {
+		t.Fatal("expected child work item")
+	}
+
+	// Verify parent_of link: umbrella WI -> child WI
+	hasParentLink := false
+	for _, l := range store.links {
+		if l.LinkType == LinkTypeParentOf &&
+			l.SourceID == umbrellaWI.ID &&
+			l.TargetID == childWI.ID {
+			hasParentLink = true
+		}
+	}
+	if !hasParentLink {
+		t.Error("expected parent_of link from umbrella to child work item")
+		t.Logf("umbrella WI ID: %s, child WI ID: %s", umbrellaWI.ID, childWI.ID)
+		for _, l := range store.links {
+			t.Logf("  link: %s -> %s [%s]", l.SourceID, l.TargetID, l.LinkType)
 		}
 	}
 }
