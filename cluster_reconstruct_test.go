@@ -30,12 +30,12 @@ func (f *reconstructFakeStore) QueryLinks(_ context.Context, filter LinkFilter) 
 	}
 	return out, nil
 }
-func (f *reconstructFakeStore) CreateEvent(context.Context, *Event) error            { return nil }
+func (f *reconstructFakeStore) CreateEvent(context.Context, *Event) error { return nil }
 func (f *reconstructFakeStore) ListEvents(context.Context, EventFilter) ([]Event, error) {
 	return nil, nil
 }
-func (f *reconstructFakeStore) GetEvent(context.Context, string) (*Event, error)        { return nil, nil }
-func (f *reconstructFakeStore) CreateBacklogItem(context.Context, *BacklogItem) error   { return nil }
+func (f *reconstructFakeStore) GetEvent(context.Context, string) (*Event, error)      { return nil, nil }
+func (f *reconstructFakeStore) CreateBacklogItem(context.Context, *BacklogItem) error { return nil }
 func (f *reconstructFakeStore) ListBacklogItems(context.Context, BacklogFilter) ([]BacklogItem, error) {
 	return nil, nil
 }
@@ -45,10 +45,14 @@ func (f *reconstructFakeStore) GetBacklogItem(context.Context, string) (*Backlog
 func (f *reconstructFakeStore) UpdateBacklogItem(context.Context, string, *BacklogItem) error {
 	return nil
 }
-func (f *reconstructFakeStore) CreateWorkItem(context.Context, *WorkItem) error                { return nil }
-func (f *reconstructFakeStore) ListWorkItems(context.Context, WorkItemFilter) ([]WorkItem, error) { return nil, nil }
-func (f *reconstructFakeStore) GetWorkItem(context.Context, string) (*WorkItem, error)         { return nil, nil }
-func (f *reconstructFakeStore) UpdateWorkItem(context.Context, string, *WorkItem) error        { return nil }
+func (f *reconstructFakeStore) CreateWorkItem(context.Context, *WorkItem) error { return nil }
+func (f *reconstructFakeStore) ListWorkItems(context.Context, WorkItemFilter) ([]WorkItem, error) {
+	return nil, nil
+}
+func (f *reconstructFakeStore) GetWorkItem(context.Context, string) (*WorkItem, error) {
+	return nil, nil
+}
+func (f *reconstructFakeStore) UpdateWorkItem(context.Context, string, *WorkItem) error { return nil }
 func (f *reconstructFakeStore) UpdateWorkItemQuality(context.Context, string, float64, string) error {
 	return nil
 }
@@ -57,6 +61,15 @@ func (f *reconstructFakeStore) ListWorkItemLabels(context.Context, string) ([]Wo
 	return nil, nil
 }
 func (f *reconstructFakeStore) DeleteWorkItemLabel(context.Context, string, string) error { return nil }
+func (f *reconstructFakeStore) CreateObservation(context.Context, *WorkItemObservation) error {
+	return nil
+}
+func (f *reconstructFakeStore) ListObservations(context.Context, ObservationFilter) ([]WorkItemObservation, error) {
+	return nil, nil
+}
+func (f *reconstructFakeStore) ApplyWorkItemStatusReconcile(context.Context, string, WorkItemStatusReconcileInput) error {
+	return nil
+}
 func (f *reconstructFakeStore) IndexCommits(context.Context, string, []Commit) error { return nil }
 func (f *reconstructFakeStore) QueryCommits(context.Context, CommitFilter) ([]Commit, error) {
 	return nil, nil
@@ -72,13 +85,21 @@ func (f *reconstructFakeStore) FileHistory(context.Context, string) ([]FileChang
 func (f *reconstructFakeStore) Search(context.Context, string, SearchOpts) ([]SearchResult, error) {
 	return nil, nil
 }
-func (f *reconstructFakeStore) CreateEntity(context.Context, *Entity) error                        { return nil }
-func (f *reconstructFakeStore) FindEntity(context.Context, string, string) (*Entity, error)        { return nil, nil }
-func (f *reconstructFakeStore) FindEntityByAlias(context.Context, string) (*Entity, error)         { return nil, nil }
-func (f *reconstructFakeStore) ListEntities(context.Context, EntityFilter) ([]Entity, error)       { return nil, nil }
-func (f *reconstructFakeStore) CreateEntityAlias(context.Context, *EntityAlias) error              { return nil }
-func (f *reconstructFakeStore) CreateEntityMention(context.Context, *EntityMention) error          { return nil }
-func (f *reconstructFakeStore) FindEntitiesByEvidence(context.Context, string) ([]Entity, error)   { return nil, nil }
+func (f *reconstructFakeStore) CreateEntity(context.Context, *Entity) error { return nil }
+func (f *reconstructFakeStore) FindEntity(context.Context, string, string) (*Entity, error) {
+	return nil, nil
+}
+func (f *reconstructFakeStore) FindEntityByAlias(context.Context, string) (*Entity, error) {
+	return nil, nil
+}
+func (f *reconstructFakeStore) ListEntities(context.Context, EntityFilter) ([]Entity, error) {
+	return nil, nil
+}
+func (f *reconstructFakeStore) CreateEntityAlias(context.Context, *EntityAlias) error     { return nil }
+func (f *reconstructFakeStore) CreateEntityMention(context.Context, *EntityMention) error { return nil }
+func (f *reconstructFakeStore) FindEntitiesByEvidence(context.Context, string) ([]Entity, error) {
+	return nil, nil
+}
 func (f *reconstructFakeStore) Mode() StoreMode { return StoreModeLocal }
 func (f *reconstructFakeStore) Close() error    { return nil }
 

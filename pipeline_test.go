@@ -13,11 +13,12 @@ import (
 // every CreateEvent / CreateLink call for assertion. It deliberately
 // ignores everything not exercised by Pipeline.Run.
 type fakeStore struct {
-	mu        sync.Mutex
-	events    []*Event
-	links     []*Link
-	workItems []*WorkItem
-	labels    []*WorkItemLabel
+	mu           sync.Mutex
+	events       []*Event
+	links        []*Link
+	workItems    []*WorkItem
+	labels       []*WorkItemLabel
+	observations []*WorkItemObservation
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{} }
@@ -167,6 +168,56 @@ func (s *fakeStore) DeleteWorkItemLabel(_ context.Context, workItemID, labelText
 		kept = append(kept, l)
 	}
 	s.labels = kept
+	return nil
+}
+
+func (s *fakeStore) CreateObservation(_ context.Context, o *WorkItemObservation) error {
+	if o == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, ex := range s.observations {
+		if ex.WorkItemID == o.WorkItemID && ex.SourceEventID == o.SourceEventID && ex.ObservationType == o.ObservationType {
+			cp := *o
+			if cp.ID == "" {
+				cp.ID = ex.ID
+			}
+			s.observations[i] = &cp
+			return nil
+		}
+	}
+	cp := *o
+	if cp.ID == "" {
+		cp.ID = "obs-" + cp.WorkItemID + "-" + cp.SourceEventID + "-" + cp.ObservationType
+	}
+	s.observations = append(s.observations, &cp)
+	return nil
+}
+
+func (s *fakeStore) ListObservations(_ context.Context, f ObservationFilter) ([]WorkItemObservation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []WorkItemObservation
+	for _, o := range s.observations {
+		if f.WorkItemID != "" && o.WorkItemID != f.WorkItemID {
+			continue
+		}
+		if f.ObservationType != "" && o.ObservationType != f.ObservationType {
+			continue
+		}
+		if f.SourceEventID != "" && o.SourceEventID != f.SourceEventID {
+			continue
+		}
+		if f.MinConfidence > 0 && o.Confidence < f.MinConfidence {
+			continue
+		}
+		out = append(out, *o)
+	}
+	return out, nil
+}
+
+func (s *fakeStore) ApplyWorkItemStatusReconcile(context.Context, string, WorkItemStatusReconcileInput) error {
 	return nil
 }
 
@@ -408,6 +459,7 @@ func TestStructuredKeysExported(t *testing.T) {
 	for _, k := range []string{
 		StructuredKeyClusterAnchorID, StructuredKeyParentSignalID, StructuredKeyProvenance,
 		StructuredKeyPlanStatus, StructuredKeySourceOffset, StructuredKeyTodoID,
+		StructuredKeyCompletionClaimed,
 	} {
 		if k == "" {
 			t.Fatalf("expected non-empty StructuredKey constant")
@@ -451,6 +503,30 @@ func (s *fakeStoreWithWorkItems) GetWorkItem(_ context.Context, id string) (*Wor
 		}
 	}
 	return nil, nil
+}
+
+func (s *fakeStoreWithWorkItems) ApplyWorkItemStatusReconcile(_ context.Context, id string, in WorkItemStatusReconcileInput) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, w := range s.workItems {
+		if w.ID != id {
+			continue
+		}
+		if w.StatusAuthority >= WorkItemStatusAuthorityHuman {
+			return nil
+		}
+		if in.StatusAuthority < w.StatusAuthority {
+			return nil
+		}
+		w.Status = in.Status
+		w.StatusAuthority = in.StatusAuthority
+		w.StatusSource = in.StatusSource
+		w.StatusSourceEventID = in.StatusSourceEventID
+		w.SourceStatus = in.SourceStatus
+		w.SourceStatusObservedAt = in.SourceStatusObservedAt
+		return nil
+	}
+	return nil
 }
 
 // planTodoStatusesSynth emits several plan-derived work_item events like plan_cluster output.
@@ -577,6 +653,16 @@ func TestPipeline_DerivesPlanTodoStatusesFromStructuredData(t *testing.T) {
 		if got := byID[wid]; got != c.want {
 			t.Errorf("%s status=%q want %q", wid, got, c.want)
 		}
+	}
+
+	var nStatusObs int
+	for _, o := range store.observations {
+		if o.ObservationType == ObservationTypeStatusObserved && o.WorkItemID == "wi-ev-plan-done" {
+			nStatusObs++
+		}
+	}
+	if nStatusObs < 1 {
+		t.Fatalf("expected status_observed for wi-ev-plan-done, got %d observations", nStatusObs)
 	}
 }
 

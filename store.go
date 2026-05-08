@@ -69,6 +69,13 @@ type Store interface {
 	ListWorkItemLabels(ctx context.Context, workItemID string) ([]WorkItemLabel, error)
 	DeleteWorkItemLabel(ctx context.Context, workItemID, labelText string) error
 
+	// Work item observations (append-only evidence; local-first today).
+	CreateObservation(ctx context.Context, o *WorkItemObservation) error
+	ListObservations(ctx context.Context, filter ObservationFilter) ([]WorkItemObservation, error)
+	// ApplyWorkItemStatusReconcile updates status + authority from observation
+	// reconciliation (never stamps human tier — use UpdateWorkItem for that).
+	ApplyWorkItemStatusReconcile(ctx context.Context, workItemID string, in WorkItemStatusReconcileInput) error
+
 	// Git index
 	IndexCommits(ctx context.Context, repoPath string, commits []Commit) error
 	QueryCommits(ctx context.Context, filter CommitFilter) ([]Commit, error)

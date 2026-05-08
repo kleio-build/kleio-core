@@ -17,6 +17,8 @@ const (
 	SourceTypeLocalGit         = "local_git"
 	SourceTypeCursorTranscript = "cursor_transcript"
 	SourceTypeCursorWatch      = "cursor_watch"
+	// StatusSourceKleioReconcile tags machine reconciliation (e.g. needs_review).
+	StatusSourceKleioReconcile = "kleio_reconcile"
 )
 
 // Link types describe the relationship between two entities.

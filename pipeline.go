@@ -171,7 +171,8 @@ func (p *Pipeline) Run(ctx context.Context, scope IngestScope) (*PipelineReport,
 						vocab := p.resolveWorkItemVocab()
 						deriveWorkItem(ctx, p.Store, ev, seenWorkItemID, report, vocab)
 					} else if ev.SignalType == SignalTypeCheckpoint && isUmbrellaAnchor(ev) {
-						deriveUmbrellaWorkItem(ctx, p.Store, ev, seenWorkItemID, report)
+						vocab := p.resolveWorkItemVocab()
+						deriveUmbrellaWorkItem(ctx, p.Store, ev, seenWorkItemID, report, vocab)
 					}
 				}
 				report.EventsBySynthesizer[syn.Name()] += persisted
@@ -345,6 +346,17 @@ func deriveWorkItem(ctx context.Context, store Store, ev *Event, seen map[string
 	if err := RecomputeIntrinsicQuality(ctx, store, wiID); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("intrinsic quality %s: %v", wiID, err))
 	}
+
+	wiFresh, _ := store.GetWorkItem(ctx, wiID)
+	if wiFresh != nil {
+		wi = wiFresh
+	}
+	if err := EmitWorkItemObservationsFromDerive(ctx, store, wi, ev, vocab); err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("emit work item observations %s: %v", wiID, err))
+	}
+	if err := ReconcileWorkItemFromObservations(ctx, store, wiID, vocab); err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("reconcile work item observations %s: %v", wiID, err))
+	}
 }
 
 // isUmbrellaAnchor returns true when the event's structured data marks
@@ -364,10 +376,14 @@ func isUmbrellaAnchor(ev *Event) bool {
 // deriveUmbrellaWorkItem creates a synthetic parent WorkItem for an
 // umbrella checkpoint event so that child work items can reference it
 // via parent_of links.
-func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen map[string]bool, report *PipelineReport) {
+func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen map[string]bool, report *PipelineReport, vocab *WorkItemVocabulary) {
 	wiID := "wi-" + ev.ID
 	if seen[wiID] {
 		return
+	}
+
+	if vocab == nil {
+		vocab = BuiltinWorkItemVocabulary()
 	}
 
 	title := ev.Content
@@ -416,6 +432,17 @@ func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen ma
 
 	if err := RecomputeIntrinsicQuality(ctx, store, wiID); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("intrinsic quality %s: %v", wiID, err))
+	}
+
+	wiFresh, _ := store.GetWorkItem(ctx, wiID)
+	if wiFresh != nil {
+		wi = wiFresh
+	}
+	if err := EmitWorkItemObservationsFromDerive(ctx, store, wi, ev, vocab); err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("emit umbrella observations %s: %v", wiID, err))
+	}
+	if err := ReconcileWorkItemFromObservations(ctx, store, wiID, vocab); err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("reconcile umbrella observations %s: %v", wiID, err))
 	}
 }
 

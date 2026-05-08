@@ -166,4 +166,8 @@ const (
 	StructuredKeyPlanStatus      = "plan_status"
 	StructuredKeySourceOffset    = "source_offset"
 	StructuredKeyTodoID          = "todo_id"
+	// StructuredKeyCompletionClaimed marks transcript (or other) structured
+	// payloads that assert completion; stored as completion_claimed observations
+	// with low trust — reconcile never promotes to done without an explicit gate.
+	StructuredKeyCompletionClaimed = "completion_claimed"
 )
