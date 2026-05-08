@@ -150,6 +150,10 @@ type PipelineReport struct {
 	LinksCreated         int            `json:"links_created"`
 	Duration             time.Duration  `json:"duration"`
 	Errors               []string       `json:"errors,omitempty"`
+	// WorkItemIDsAffected lists work item IDs touched by deriveWorkItem / deriveUmbrellaWorkItem in this run.
+	WorkItemIDsAffected []string `json:"work_item_ids_affected,omitempty"`
+
+	wiAffectedSeen map[string]struct{} `json:"-"`
 }
 
 // Common StructuredData JSON keys agreed by all Synthesizers. Pipeline

@@ -308,6 +308,7 @@ func deriveWorkItem(ctx context.Context, store Store, ev *Event, seen map[string
 		return
 	}
 	seen[wiID] = true
+	report.addWorkItemAffected(wiID)
 
 	link := &Link{
 		SourceID:   ev.ID,
@@ -339,6 +340,10 @@ func deriveWorkItem(ctx context.Context, store Store, ev *Event, seen map[string
 				}
 			}
 		}
+	}
+
+	if err := RecomputeIntrinsicQuality(ctx, store, wiID); err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("intrinsic quality %s: %v", wiID, err))
 	}
 }
 
@@ -396,6 +401,7 @@ func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen ma
 		return
 	}
 	seen[wiID] = true
+	report.addWorkItemAffected(wiID)
 
 	link := &Link{
 		SourceID:   ev.ID,
@@ -406,6 +412,10 @@ func deriveUmbrellaWorkItem(ctx context.Context, store Store, ev *Event, seen ma
 	}
 	if err := store.CreateLink(ctx, link); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("link umbrella provenance: %v", err))
+	}
+
+	if err := RecomputeIntrinsicQuality(ctx, store, wiID); err != nil {
+		report.Errors = append(report.Errors, fmt.Sprintf("intrinsic quality %s: %v", wiID, err))
 	}
 }
 
@@ -502,6 +512,20 @@ func attachIngestWorkItemAuthority(wi *WorkItem, ev *Event) {
 		wi.StatusSourceEventID = ev.ID
 		wi.SourceStatusObservedAt = ev.CreatedAt
 	}
+}
+
+func (r *PipelineReport) addWorkItemAffected(id string) {
+	if r == nil || id == "" {
+		return
+	}
+	if r.wiAffectedSeen == nil {
+		r.wiAffectedSeen = make(map[string]struct{})
+	}
+	if _, ok := r.wiAffectedSeen[id]; ok {
+		return
+	}
+	r.wiAffectedSeen[id] = struct{}{}
+	r.WorkItemIDsAffected = append(r.WorkItemIDsAffected, id)
 }
 
 // indexByte returns the index of the first instance of c in s, or -1.

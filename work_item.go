@@ -29,6 +29,10 @@ type WorkItem struct {
 	UpdatedAt              string `json:"updated_at"`
 	Synced                 *bool  `json:"synced,omitempty"`
 	WorkspaceID            string `json:"workspace_id,omitempty"`
+	// IntrinsicQualityScore is persisted 0–1 when the intrinsic-quality scorer has run (RFC-QLG).
+	IntrinsicQualityScore *float64 `json:"intrinsic_quality_score,omitempty"`
+	// QualityReasons is JSON (includes rule_version per RFC-QLG-002).
+	QualityReasons string `json:"quality_reasons,omitempty"`
 }
 
 // WorkItemFilter constrains which work items are returned by
@@ -47,4 +51,6 @@ type WorkItemFilter struct {
 	Granularity string `json:"granularity,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	Limit       int    `json:"limit,omitempty"`
+	// MinIntrinsicQuality when > 0 excludes rows with NULL intrinsic score or score below threshold.
+	MinIntrinsicQuality float64 `json:"min_intrinsic_quality,omitempty"`
 }

@@ -17,6 +17,7 @@ type fakeStore struct {
 	events    []*Event
 	links     []*Link
 	workItems []*WorkItem
+	labels    []*WorkItemLabel
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{} }
@@ -34,7 +35,17 @@ func (s *fakeStore) CreateEvent(_ context.Context, e *Event) error {
 	return nil
 }
 func (s *fakeStore) ListEvents(context.Context, EventFilter) ([]Event, error) { return nil, nil }
-func (s *fakeStore) GetEvent(context.Context, string) (*Event, error)         { return nil, nil }
+func (s *fakeStore) GetEvent(_ context.Context, id string) (*Event, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.events {
+		if e.ID == id {
+			cp := *e
+			return &cp, nil
+		}
+	}
+	return nil, nil
+}
 
 func (s *fakeStore) CreateBacklogItem(context.Context, *BacklogItem) error { return nil }
 func (s *fakeStore) ListBacklogItems(context.Context, BacklogFilter) ([]BacklogItem, error) {
@@ -51,7 +62,24 @@ func (s *fakeStore) CreateLink(_ context.Context, l *Link) error {
 	s.links = append(s.links, l)
 	return nil
 }
-func (s *fakeStore) QueryLinks(context.Context, LinkFilter) ([]Link, error) { return nil, nil }
+func (s *fakeStore) QueryLinks(_ context.Context, f LinkFilter) ([]Link, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Link
+	for _, l := range s.links {
+		if f.TargetID != "" && l.TargetID != f.TargetID {
+			continue
+		}
+		if f.SourceID != "" && l.SourceID != f.SourceID {
+			continue
+		}
+		if f.LinkType != "" && l.LinkType != f.LinkType {
+			continue
+		}
+		out = append(out, *l)
+	}
+	return out, nil
+}
 
 func (s *fakeStore) TrackFileChange(context.Context, *FileChange) error        { return nil }
 func (s *fakeStore) FileHistory(context.Context, string) ([]FileChange, error) { return nil, nil }
@@ -79,6 +107,68 @@ func (s *fakeStore) GetWorkItem(_ context.Context, id string) (*WorkItem, error)
 	return nil, nil
 }
 func (s *fakeStore) UpdateWorkItem(context.Context, string, *WorkItem) error { return nil }
+
+func (s *fakeStore) UpdateWorkItemQuality(_ context.Context, id string, score float64, reasons string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, w := range s.workItems {
+		if w.ID == id {
+			w2 := *w
+			sc := score
+			w2.IntrinsicQualityScore = &sc
+			w2.QualityReasons = reasons
+			s.workItems[i] = &w2
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *fakeStore) UpsertWorkItemLabel(_ context.Context, label *WorkItemLabel) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, l := range s.labels {
+		if l.WorkItemID == label.WorkItemID && l.LabelText == label.LabelText {
+			if label.Confidence > l.Confidence || (label.Confidence == l.Confidence && LabelTrustRank(label.Source) > LabelTrustRank(l.Source)) {
+				cp := *label
+				s.labels[i] = &cp
+			}
+			return nil
+		}
+	}
+	cp := *label
+	if cp.ID == "" {
+		cp.ID = "lbl-" + cp.WorkItemID + "-" + cp.LabelText
+	}
+	s.labels = append(s.labels, &cp)
+	return nil
+}
+
+func (s *fakeStore) ListWorkItemLabels(_ context.Context, workItemID string) ([]WorkItemLabel, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []WorkItemLabel
+	for _, l := range s.labels {
+		if l.WorkItemID == workItemID {
+			out = append(out, *l)
+		}
+	}
+	return out, nil
+}
+
+func (s *fakeStore) DeleteWorkItemLabel(_ context.Context, workItemID, labelText string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var kept []*WorkItemLabel
+	for _, l := range s.labels {
+		if l.WorkItemID == workItemID && l.LabelText == labelText {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	s.labels = kept
+	return nil
+}
 
 func (s *fakeStore) CreateEntity(context.Context, *Entity) error                  { return nil }
 func (s *fakeStore) FindEntity(context.Context, string, string) (*Entity, error)  { return nil, nil }

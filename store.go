@@ -63,6 +63,11 @@ type Store interface {
 	ListWorkItems(ctx context.Context, filter WorkItemFilter) ([]WorkItem, error)
 	GetWorkItem(ctx context.Context, id string) (*WorkItem, error)
 	UpdateWorkItem(ctx context.Context, id string, update *WorkItem) error
+	// UpdateWorkItemQuality sets persisted intrinsic quality (does not touch status authority).
+	UpdateWorkItemQuality(ctx context.Context, workItemID string, intrinsicScore float64, qualityReasonsJSON string) error
+	UpsertWorkItemLabel(ctx context.Context, label *WorkItemLabel) error
+	ListWorkItemLabels(ctx context.Context, workItemID string) ([]WorkItemLabel, error)
+	DeleteWorkItemLabel(ctx context.Context, workItemID, labelText string) error
 
 	// Git index
 	IndexCommits(ctx context.Context, repoPath string, commits []Commit) error
